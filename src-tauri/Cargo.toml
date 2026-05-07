@@ -3,7 +3,7 @@ name = "Note"
 version = "0.0.1"
 description = "A Markdown Note Lab"
 authors = ["Daniel Baranov"]
-edition = "2026"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

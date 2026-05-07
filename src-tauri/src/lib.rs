@@ -1,18 +1,10 @@
-use std::fs;
-use std::path::PathBuf;
+mod database;
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+use tauri::Manager;
 
-#[tauri::command]
-fn save_file(path: &str, contents: &str) -> Result<(), String> {
-    let path = PathBuf::from(path);
-
-    fs::write(path, contents).map_err(|err| err.to_string())?;
-
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let db = tauri::async_runtime::block_on(database::connect())?;
+    app.manage(db);
     Ok(())
 }
 
@@ -20,8 +12,13 @@ fn save_file(path: &str, contents: &str) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
-        .invoke_handler(tauri::generate_handler![save_file])
+        .setup(setup)
+        .invoke_handler(tauri::generate_handler![
+            database::search_objects,
+            database::create_markdown_object,
+            database::load_object,
+            database::save_object_content
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
