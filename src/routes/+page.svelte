@@ -52,14 +52,8 @@
         error = "";
 
         try {
-            const created = await createMarkdownObject(noteTitle);
-            await saveObjectContent(created.id, initialContent);
-
-            object = {
-                ...created,
-                contentText: initialContent,
-                updatedAtMs: Date.now(),
-            };
+            const created = await createMarkdownObject(initialContent);
+            object = created;
             markdownText = initialContent;
             closeCommand();
             await search("");
@@ -88,12 +82,7 @@
         error = "";
 
         try {
-            await saveObjectContent(object.id, markdownText);
-            object = {
-                ...object,
-                contentText: markdownText,
-                updatedAtMs: Date.now(),
-            };
+            object = await saveObjectContent(object.id, markdownText);
             await search(query);
         } catch (caught) {
             error = String(caught);

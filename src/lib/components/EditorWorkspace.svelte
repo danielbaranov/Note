@@ -2,6 +2,7 @@
     import Editor from "../../editor/editor.svelte";
     import {
         displayTitleForObject,
+        markdownTitleOrDefault,
         type ObjectRecord,
     } from "$lib/objects";
 
@@ -11,10 +12,10 @@
     export let onSave: () => void | Promise<void> = () => {};
     export let onOpenCommand: () => void = () => {};
 
-    $: displayTitle = displayTitleForObject({
-        ...object,
-        contentText: markdownText,
-    });
+    $: displayTitle =
+        object.objectType === "markdown_note"
+            ? markdownTitleOrDefault(markdownText)
+            : displayTitleForObject(object);
 </script>
 
 <section class="workspace" aria-label={displayTitle}>

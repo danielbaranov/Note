@@ -17,6 +17,7 @@ pub fn run() {
             database::search_objects,
             database::create_markdown_object,
             database::load_object,
+            database::update_object,
             database::save_object_content
         ])
         .run(tauri::generate_context!())
