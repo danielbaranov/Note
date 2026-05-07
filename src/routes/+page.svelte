@@ -1,120 +1,218 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import { invoke } from "@tauri-apps/api/core";
+    import { onMount, tick } from "svelte";
 
-    import Editor from "../editor/editor.svelte";
-
-    type ObjectRecord = {
-        id: string;
-        objectType: string;
-        title: string;
-        contentText: string;
-        metadataJson: string;
-        sourceUri: string | null;
-        createdAtMs: number;
-        updatedAtMs: number;
-    };
+    import CommandDialog from "$lib/components/CommandDialog.svelte";
+    import EditorWorkspace from "$lib/components/EditorWorkspace.svelte";
+    import ObjectCommand from "$lib/components/ObjectCommand.svelte";
+    import {
+        createMarkdownObject,
+        loadObject,
+        saveObjectContent,
+        searchObjects,
+        type ObjectRecord,
+    } from "$lib/objects";
 
     let query = $state("");
     let objects = $state<ObjectRecord[]>([]);
     let object = $state<ObjectRecord | null>(null);
     let markdownText = $state("");
     let error = $state("");
+    let commandOpen = $state(false);
+    let loading = $state(false);
+    let inlineCommand = $state<ObjectCommand>();
+    let searchRequest = 0;
 
-    onMount(search);
+    onMount(() => {
+        void search();
+        void focusInlineCommand();
+    });
 
-    async function run<T>(command: string, args = {}) {
+    async function search(nextQuery = query) {
+        const request = ++searchRequest;
+        error = "";
+        loading = true;
+
+        try {
+            const results = await searchObjects(nextQuery);
+            if (request === searchRequest) {
+                objects = results;
+            }
+        } catch (caught) {
+            error = String(caught);
+        } finally {
+            if (request === searchRequest) {
+                loading = false;
+            }
+        }
+    }
+
+    async function create(title: string) {
+        const noteTitle = title.trim() || "Untitled";
+        const initialContent = `# ${noteTitle}`;
         error = "";
 
         try {
-            return await invoke<T>(command, args);
+            const created = await createMarkdownObject(noteTitle);
+            await saveObjectContent(created.id, initialContent);
+
+            object = {
+                ...created,
+                contentText: initialContent,
+                updatedAtMs: Date.now(),
+            };
+            markdownText = initialContent;
+            closeCommand();
+            await search("");
         } catch (caught) {
             error = String(caught);
         }
     }
 
-    async function search() {
-        objects =
-            (await run<ObjectRecord[]>("search_objects", { query })) ?? [];
-    }
-
-    async function create() {
-        const created = await run<ObjectRecord>("create_markdown_object", {
-            title: query,
-        });
-        if (!created) return;
-
-        object = created;
-        markdownText = created.contentText;
-        query = "";
-        await search();
-    }
-
     async function open(id: string) {
-        const loaded = await run<ObjectRecord>("load_object", { id });
-        if (!loaded) return;
+        error = "";
 
-        object = loaded;
-        markdownText = loaded.contentText;
+        try {
+            const loaded = await loadObject(id);
+            object = loaded;
+            markdownText = loaded.contentText;
+            closeCommand();
+            await search("");
+        } catch (caught) {
+            error = String(caught);
+        }
     }
 
     async function save() {
         if (!object) return;
 
-        await run("save_object_content", {
-            id: object.id,
-            contentText: markdownText,
-        });
+        error = "";
+
+        try {
+            await saveObjectContent(object.id, markdownText);
+            object = {
+                ...object,
+                contentText: markdownText,
+                updatedAtMs: Date.now(),
+            };
+            await search(query);
+        } catch (caught) {
+            error = String(caught);
+        }
+    }
+
+    function closeCommand() {
+        query = "";
+        commandOpen = false;
+    }
+
+    async function focusInlineCommand() {
+        await tick();
+        await inlineCommand?.focusInput();
+    }
+
+    function openCommand() {
+        if (object) {
+            commandOpen = true;
+        } else {
+            void focusInlineCommand();
+        }
+    }
+
+    function handleWindowKeydown(event: KeyboardEvent) {
+        const isCommandShortcut =
+            event.key === "/" && (event.metaKey || event.ctrlKey);
+
+        if (!isCommandShortcut) return;
+
+        event.preventDefault();
+        openCommand();
     }
 </script>
 
-<main>
-    <input
-        placeholder="Search or new filename"
-        bind:value={query}
-        oninput={search}
-    />
-    <button type="button" onclick={create}>+</button>
+<svelte:window onkeydown={handleWindowKeydown} />
 
+<main class:empty={!object}>
     {#if error}
-        <pre>{error}</pre>
+        <p class="error" role="alert">{error}</p>
     {/if}
 
-    {#each objects as item (item.id)}
-        <button type="button" onclick={() => open(item.id)}>{item.title}</button
-        >
-    {/each}
-
     {#if object}
-        <p>
-            <button type="button" onclick={save}>Save</button>
-            {object.title}
-        </p>
-
-        <div class="editor">
-            {#key object.id}
-                <Editor
-                    initialText={markdownText}
-                    onChange={(value) => (markdownText = value)}
-                    onSave={save}
-                />
-            {/key}
-        </div>
+        <EditorWorkspace
+            {object}
+            {markdownText}
+            onChange={(value) => (markdownText = value)}
+            onSave={save}
+            onOpenCommand={openCommand}
+        />
+        <CommandDialog
+            bind:open={commandOpen}
+            bind:query
+            {objects}
+            {loading}
+            currentObjectId={object.id}
+            onCreateObject={create}
+            onOpenObject={open}
+            onQueryChange={search}
+        />
+    {:else}
+        <section class="empty-command" aria-label="Open object">
+            <ObjectCommand
+                bind:this={inlineCommand}
+                bind:query
+                mode="inline"
+                {objects}
+                {loading}
+                onCreateObject={create}
+                onOpenObject={open}
+                onQueryChange={search}
+            />
+        </section>
     {/if}
 </main>
 
 <style>
-    main {
-        display: flex;
-        height: 100vh;
-        flex-direction: column;
-        gap: 8px;
-        padding: 12px;
+    :global(body) {
+        margin: 0;
     }
 
-    .editor {
-        flex: 1;
+    :global(*) {
+        box-sizing: border-box;
+    }
+
+    main {
+        position: relative;
+        height: 100vh;
         min-height: 0;
-        border: 1px solid #ccc;
+        background: #fbfbfa;
+        color: #18181b;
+        font-family:
+            Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", sans-serif;
+    }
+
+    main.empty {
+        display: grid;
+        place-items: start center;
+        padding-top: 18vh;
+    }
+
+    .empty-command {
+        width: min(720px, calc(100vw - 32px));
+    }
+
+    .error {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 20;
+        max-width: min(520px, calc(100vw - 32px));
+        margin: 0;
+        border: 1px solid rgba(185, 28, 28, 0.22);
+        border-radius: 8px;
+        background: #fef2f2;
+        color: #991b1b;
+        font-size: 0.86rem;
+        padding: 10px 12px;
+        white-space: pre-wrap;
     }
 </style>

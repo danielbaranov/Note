@@ -13,13 +13,22 @@
 
     export let initialText = "Hello Word";
     export let onSave: () => void = () => {};
+    export let onOpenCommand: () => void = () => {};
 
-    const saveKeymap = keymap.of([
+    const appKeymap = keymap.of([
         {
             key: "Mod-s",
             preventDefault: true,
             run: () => {
                 onSave();
+                return true;
+            },
+        },
+        {
+            key: "Mod-/",
+            preventDefault: true,
+            run: () => {
+                onOpenCommand();
                 return true;
             },
         },
@@ -34,7 +43,7 @@
             markdown(),
             markdownDecorations,
 
-            saveKeymap,
+            appKeymap,
             keymap.of(defaultKeymap),
 
             EditorView.updateListener.of((update) => {
