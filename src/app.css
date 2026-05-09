@@ -1,0 +1,197 @@
+:root {
+    /* shell */
+    --header-height: 40px;
+    --traffic-light-space: 108px;
+    --titlebar-control-top: 5px;
+    --titlebar-control-height: 30px;
+    --sidebar-width: 280px;
+    --connections-width: 320px;
+    --app-bg: #fbfaf8;
+    --sidebar-bg: #f4f3f0;
+    --border-color: rgba(20, 19, 17, 0.1);
+
+    /* surfaces */
+    --bg-app: var(--app-bg);
+    --bg-surface: var(--app-bg);
+    --bg-elev: #ffffff;
+    --bg-tint: #f3f2ef;
+    --bg-tint-2: #ebeae6;
+    --bg-overlay: rgba(20, 19, 17, 0.18);
+
+    /* text */
+    --fg-1: #18181a;
+    --fg-2: #57565a;
+    --fg-3: #8a8884;
+    --fg-4: #b6b3ad;
+
+    /* lines */
+    --line-1: var(--border-color);
+    --line-2: #e2e0db;
+    --line-3: #d3d0c9;
+
+    /* accent — forest green, used sparingly */
+    --accent: #1f6b4a;
+    --accent-soft: #e8f0eb;
+    --accent-2: #2a8a60;
+    --accent-line: #b6d3c2;
+
+    /* incidental */
+    --highlight-yellow: #f7e69a;
+    --pdf-red: #b14a39;
+    --web-blue: #4a6b8a;
+    --note-ink: #2b2a28;
+
+    /* typography — local-only fallbacks (no network fonts in a desktop app) */
+    --font-sans:
+        -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", system-ui,
+        sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, "JetBrains Mono", monospace;
+    --font-serif: "Iowan Old Style", "Source Serif 4", Georgia, serif;
+
+    /* radius */
+    --r-sm: 6px;
+    --r-md: 10px;
+    --r-lg: 14px;
+    --r-xl: 20px;
+
+    /* shadow */
+    --shadow-sm: 0 1px 2px rgba(20, 19, 17, 0.05);
+    --shadow-md:
+        0 4px 14px rgba(20, 19, 17, 0.08), 0 1px 3px rgba(20, 19, 17, 0.04);
+    --shadow-lg:
+        0 24px 60px rgba(20, 19, 17, 0.18), 0 2px 8px rgba(20, 19, 17, 0.06);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    color: var(--fg-1);
+    background: var(--app-bg);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+button {
+    font-family: inherit;
+}
+
+::selection {
+    background: var(--accent-soft);
+}
+
+/* ── Shared utility: icon button ─────────────────────────────────────── */
+
+.mp-iconbtn {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    padding: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--fg-2);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background 0.12s,
+        color 0.12s;
+}
+
+.mp-iconbtn:hover {
+    background: var(--bg-tint);
+    color: var(--fg-1);
+}
+
+.mp-iconbtn[data-active="true"] {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.mp-iconbtn[data-active="true"]:hover {
+    background: #dfeae4;
+    color: var(--accent);
+}
+
+.mp-iconbtn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ── Shared utility: kind dot (note/pdf/web swatch) ──────────────────── */
+
+.mp-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    flex: 0 0 6px;
+}
+
+.mp-dot--note {
+    background: var(--note-ink);
+}
+
+.mp-dot--pdf {
+    background: var(--pdf-red);
+}
+
+.mp-dot--web {
+    background: var(--web-blue);
+}
+
+/* ── Shared utility: chip ────────────────────────────────────────────── */
+
+.mp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--fg-2);
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--bg-tint);
+    letter-spacing: 0.01em;
+}
+
+/* ── Screen-reader-only label ────────────────────────────────────────── */
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+}
+
+/* ── Command dialog (Bits-UI portal) ─────────────────────────────────── */
+
+.dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(20, 19, 17, 0.32);
+    backdrop-filter: blur(6px);
+}
+
+.dialog-content {
+    position: fixed;
+    top: 14vh;
+    left: 50%;
+    z-index: 21;
+    outline: none;
+    transform: translateX(-50%);
+}

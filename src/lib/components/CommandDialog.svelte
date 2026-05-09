@@ -64,32 +64,3 @@
         </Dialog.Content>
     </Dialog.Portal>
 </Dialog.Root>
-
-<style>
-    :global(.dialog-overlay) {
-        position: fixed;
-        inset: 0;
-        z-index: 10;
-        background: rgba(15, 23, 42, 0.22);
-        backdrop-filter: blur(4px);
-    }
-
-    :global(.dialog-content) {
-        position: fixed;
-        top: 14vh;
-        left: 50%;
-        z-index: 11;
-        outline: none;
-        transform: translateX(-50%);
-    }
-
-    :global(.sr-only) {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        clip-path: inset(50%);
-    }
-</style>

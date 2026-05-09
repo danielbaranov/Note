@@ -1,16 +1,23 @@
 <script lang="ts">
-    import { onMount, tick } from "svelte";
+    import { onMount } from "svelte";
 
+    import AppShell from "$lib/components/shell/AppShell.svelte";
+    import TitleBar from "$lib/components/shell/TitleBar.svelte";
+    import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
+    import EditorPane from "$lib/components/editor/EditorPane.svelte";
+    import EditorEmpty from "$lib/components/editor/EditorEmpty.svelte";
+    import ConnectionsPanel from "$lib/components/connections/ConnectionsPanel.svelte";
+    import GraphDialog from "$lib/components/graph/GraphDialog.svelte";
     import CommandDialog from "$lib/components/CommandDialog.svelte";
-    import EditorWorkspace from "$lib/components/EditorWorkspace.svelte";
-    import ObjectCommand from "$lib/components/ObjectCommand.svelte";
     import {
         createMarkdownObject,
         loadObject,
+        markdownTitleOrDefault,
         saveObjectContent,
         searchObjects,
         type ObjectRecord,
     } from "$lib/objects";
+    import type { Connection } from "$lib/connections";
 
     let query = $state("");
     let objects = $state<ObjectRecord[]>([]);
@@ -18,13 +25,26 @@
     let markdownText = $state("");
     let error = $state("");
     let commandOpen = $state(false);
+    let graphOpen = $state(false);
+    let connectionsOpen = $state(true);
     let loading = $state(false);
-    let inlineCommand = $state<ObjectCommand>();
     let searchRequest = 0;
+
+    // Connections aren't persisted yet — empty list keeps the panel honest
+    // about its current state. Wire to the backend when the storage lands.
+    const noteConnections: Connection[] = [];
+
+    const graphTitle = $derived(
+        object
+            ? markdownTitleOrDefault(markdownText) || "Untitled"
+            : "Note graph",
+    );
+    const titleBarTitle = $derived(
+        object ? markdownTitleOrDefault(markdownText) : "Note",
+    );
 
     onMount(() => {
         void search();
-        void focusInlineCommand();
     });
 
     async function search(nextQuery = query) {
@@ -94,114 +114,107 @@
         commandOpen = false;
     }
 
-    async function focusInlineCommand() {
-        await tick();
-        await inlineCommand?.focusInput();
-    }
-
     function openCommand() {
-        if (object) {
-            commandOpen = true;
-        } else {
-            void focusInlineCommand();
-        }
+        commandOpen = true;
     }
 
     function handleWindowKeydown(event: KeyboardEvent) {
         const isCommandShortcut =
             event.key === "/" && (event.metaKey || event.ctrlKey);
 
-        if (!isCommandShortcut) return;
+        if (isCommandShortcut) {
+            event.preventDefault();
+            openCommand();
+            return;
+        }
 
-        event.preventDefault();
-        openCommand();
+        const isQuickSearch =
+            event.key.toLowerCase() === "k" &&
+            (event.metaKey || event.ctrlKey);
+
+        if (isQuickSearch) {
+            event.preventDefault();
+            openCommand();
+        }
     }
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
-<main class:empty={!object}>
-    {#if error}
-        <p class="error" role="alert">{error}</p>
-    {/if}
-
-    {#if object}
-        <EditorWorkspace
-            {object}
-            {markdownText}
-            onChange={(value) => (markdownText = value)}
-            onSave={save}
+<AppShell {connectionsOpen}>
+    {#snippet titleBar()}
+        <TitleBar
+            title={titleBarTitle}
+            {connectionsOpen}
             onOpenCommand={openCommand}
+            onOpenGraph={() => (graphOpen = true)}
+            onToggleConnections={() => (connectionsOpen = !connectionsOpen)}
         />
-        <CommandDialog
-            bind:open={commandOpen}
-            bind:query
+    {/snippet}
+
+    {#snippet sidebar()}
+        <Sidebar
             {objects}
-            {loading}
-            currentObjectId={object.id}
-            onCreateObject={create}
-            onOpenObject={open}
-            onQueryChange={search}
+            currentObjectId={object?.id ?? null}
+            onSelectObject={open}
+            onOpenCommand={openCommand}
+            onCreateObject={() => create("")}
         />
-    {:else}
-        <section class="empty-command" aria-label="Open object">
-            <ObjectCommand
-                bind:this={inlineCommand}
-                bind:query
-                mode="inline"
-                {objects}
-                {loading}
-                onCreateObject={create}
-                onOpenObject={open}
-                onQueryChange={search}
+    {/snippet}
+
+    {#snippet editor()}
+        {#if object}
+            <EditorPane
+                {object}
+                {markdownText}
+                onChange={(value) => (markdownText = value)}
+                onSave={save}
+                onOpenCommand={openCommand}
             />
-        </section>
-    {/if}
-</main>
+        {:else}
+            <EditorEmpty onOpenCommand={openCommand} />
+        {/if}
+    {/snippet}
+
+    {#snippet connections()}
+        {#if object}
+            <ConnectionsPanel connections={noteConnections} />
+        {/if}
+    {/snippet}
+</AppShell>
+
+<CommandDialog
+    bind:open={commandOpen}
+    bind:query
+    {objects}
+    {loading}
+    currentObjectId={object?.id ?? null}
+    onCreateObject={create}
+    onOpenObject={open}
+    onQueryChange={search}
+/>
+
+<GraphDialog bind:open={graphOpen} title={graphTitle} />
+
+{#if error}
+    <p class="error" role="alert">{error}</p>
+{/if}
 
 <style>
-    :global(body) {
-        margin: 0;
-    }
-
-    :global(*) {
-        box-sizing: border-box;
-    }
-
-    main {
-        position: relative;
-        height: 100vh;
-        min-height: 0;
-        background: #fbfbfa;
-        color: #18181b;
-        font-family:
-            Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-            "Segoe UI", sans-serif;
-    }
-
-    main.empty {
-        display: grid;
-        place-items: start center;
-        padding-top: 18vh;
-    }
-
-    .empty-command {
-        width: min(720px, calc(100vw - 32px));
-    }
-
     .error {
         position: fixed;
         right: 16px;
         bottom: 16px;
-        z-index: 20;
+        z-index: 40;
         max-width: min(520px, calc(100vw - 32px));
         margin: 0;
-        border: 1px solid rgba(185, 28, 28, 0.22);
-        border-radius: 8px;
-        background: #fef2f2;
-        color: #991b1b;
-        font-size: 0.86rem;
+        border: 1px solid rgba(177, 74, 57, 0.3);
+        border-radius: var(--r-md);
+        background: #fbe9e5;
+        color: #7a2a1f;
+        font-size: 12.5px;
         padding: 10px 12px;
         white-space: pre-wrap;
+        box-shadow: var(--shadow-md);
     }
 </style>

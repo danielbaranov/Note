@@ -69,36 +69,13 @@
 <div class="editor" bind:this={editorElement}></div>
 
 <style>
+    /* Visual styling (typography, h1/h2, etc.) lives with whichever component
+       hosts this editor — see EditorPane.svelte for the prose styles. */
     .editor {
         height: 100%;
     }
 
     .editor :global(.cm-editor) {
         height: 100%;
-    }
-
-    .editor :global(.cm-scroller) {
-        font-family: system-ui, sans-serif;
-        line-height: 1.6;
-    }
-
-    .editor :global(.cm-md-h1) {
-        font-size: 2rem;
-        font-weight: 700;
-        line-height: 2.5rem;
-    }
-
-    .editor :global(.cm-md-h2) {
-        font-size: 1.5rem;
-        font-weight: 700;
-        line-height: 2rem;
-    }
-
-    .editor :global(.cm-md-bold) {
-        font-weight: 700;
-    }
-
-    .editor :global(.cm-md-italic) {
-        font-style: italic;
     }
 </style>

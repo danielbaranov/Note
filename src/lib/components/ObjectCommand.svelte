@@ -106,44 +106,50 @@
 <style>
     :global(.object-command) {
         display: flex;
-        width: min(720px, calc(100vw - 32px));
+        width: min(640px, calc(100vw - 32px));
         flex-direction: column;
         overflow: hidden;
-        border: 1px solid rgba(24, 24, 27, 0.12);
-        border-radius: 8px;
-        background: #ffffff;
-        box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18);
+        border: 1px solid var(--line-1);
+        border-radius: var(--r-md);
+        background: var(--bg-elev);
+        box-shadow: var(--shadow-lg);
     }
 
     :global(.object-command.inline) {
-        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+        box-shadow: var(--shadow-md);
     }
 
     :global(.command-input) {
         width: 100%;
         border: 0;
-        border-bottom: 1px solid rgba(24, 24, 27, 0.1);
+        border-bottom: 1px solid var(--line-1);
         box-sizing: border-box;
         font: inherit;
-        font-size: 1.05rem;
+        font-size: 15px;
+        color: var(--fg-1);
+        background: transparent;
         outline: 0;
-        padding: 16px 18px;
+        padding: 14px 18px;
+    }
+
+    :global(.command-input)::placeholder {
+        color: var(--fg-4);
     }
 
     :global(.command-list) {
         max-height: min(420px, 52vh);
         overflow: auto;
-        padding: 8px;
+        padding: 6px;
     }
 
     :global(.command-item),
     :global(.command-empty) {
-        min-height: 44px;
-        border-radius: 6px;
+        min-height: 40px;
+        border-radius: var(--r-sm);
         box-sizing: border-box;
-        color: #18181b;
-        font-size: 0.95rem;
-        padding: 10px;
+        color: var(--fg-1);
+        font-size: 13.5px;
+        padding: 8px 12px;
     }
 
     :global(.command-item) {
@@ -156,11 +162,12 @@
 
     :global(.command-item[data-selected]),
     :global(.command-item:hover) {
-        background: #eef2ff;
+        background: var(--bg-tint);
     }
 
     :global(.active-item) {
-        color: #3730a3;
+        color: var(--accent);
+        font-weight: 500;
     }
 
     .item-primary {
@@ -171,13 +178,14 @@
 
     .item-secondary {
         flex: none;
-        color: #71717a;
-        font-size: 0.8rem;
+        color: var(--fg-3);
+        font-size: 11.5px;
+        font-family: var(--font-mono);
     }
 
     :global(.command-empty) {
         display: flex;
         align-items: center;
-        color: #71717a;
+        color: var(--fg-3);
     }
 </style>
