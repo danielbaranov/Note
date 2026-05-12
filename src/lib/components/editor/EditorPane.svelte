@@ -1,10 +1,12 @@
 <script lang="ts">
     import Editor from "../../../editor/editor.svelte";
     import EditorBreadcrumb from "./EditorBreadcrumb.svelte";
-    import type { ObjectRecord } from "$lib/objects";
 
     type Props = {
-        object: ObjectRecord;
+        editorKey: string;
+        title: string;
+        updatedAtMs?: number;
+        folder?: string;
         markdownText: string;
         onChange: (value: string) => void;
         onSave: () => void | Promise<void>;
@@ -12,7 +14,10 @@
     };
 
     let {
-        object,
+        editorKey,
+        title,
+        updatedAtMs,
+        folder = "Notes",
         markdownText,
         onChange,
         onSave,
@@ -31,11 +36,11 @@
     }
 </script>
 
-<section class="pane" aria-label={object.title || "Untitled"}>
-    <EditorBreadcrumb updatedAtMs={object.updatedAtMs} {wordCount} />
+<section class="pane" aria-label={title}>
+    <EditorBreadcrumb {folder} {updatedAtMs} {wordCount} />
 
     <div class="prose-shell">
-        {#key object.id}
+        {#key editorKey}
             <Editor
                 initialText={markdownText}
                 {onChange}

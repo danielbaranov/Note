@@ -1,4 +1,7 @@
 <script lang="ts">
+    import Icon from "$lib/components/ui/Icon.svelte";
+    import IconButton from "$lib/components/ui/IconButton.svelte";
+
     type ObjectKind = "note" | "pdf" | "web";
 
     type Props = {
@@ -7,6 +10,7 @@
         kind?: ObjectKind;
         active?: boolean;
         onSelect?: () => void;
+        onDelete?: () => void | Promise<void>;
     };
 
     let {
@@ -15,34 +19,56 @@
         kind = "note",
         active = false,
         onSelect,
+        onDelete,
     }: Props = $props();
 
     const dotClass = $derived(`mp-dot mp-dot--${kind}`);
 </script>
 
-<button
-    type="button"
-    class="row"
-    class:active
-    onclick={() => onSelect?.()}
-    title={name}
->
-    <span class={dotClass}></span>
-    <span class="text">
-        <span class="name">{name}</span>
-        {#if meta}<span class="meta">{meta}</span>{/if}
-    </span>
-    {#if active}
-        <span class="active-dot" aria-hidden="true"></span>
+<div class="row" class:active>
+    <button
+        type="button"
+        class="select"
+        onclick={() => onSelect?.()}
+        title={name}
+    >
+        <span class={dotClass}></span>
+        <span class="text">
+            <span class="name">{name}</span>
+            {#if meta}<span class="meta">{meta}</span>{/if}
+        </span>
+        {#if active}
+            <span class="active-dot" aria-hidden="true"></span>
+        {/if}
+    </button>
+
+    {#if onDelete}
+        <span class="delete-action">
+            <IconButton
+                title="Delete note"
+                size={22}
+                onclick={(event) => {
+                    event.stopPropagation();
+                    void onDelete();
+                }}
+            >
+                <Icon name="close" size={13} />
+            </IconButton>
+        </span>
     {/if}
-</button>
+</div>
 
 <style>
     .row {
+        position: relative;
+    }
+
+    .select {
         display: flex;
         align-items: center;
         gap: 9px;
-        padding: 6px 10px;
+        width: 100%;
+        padding: 6px 30px 6px 10px;
         font-size: 13px;
         color: var(--fg-2);
         background: transparent;
@@ -56,14 +82,32 @@
         font-size: 13px;
     }
 
-    .row:hover {
+    .row:hover .select {
         background: var(--bg-tint);
     }
 
-    .row.active {
+    .row.active .select {
         color: var(--fg-1);
         background: var(--bg-tint);
         font-weight: 500;
+    }
+
+    .delete-action {
+        position: absolute;
+        top: 50%;
+        right: 5px;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-50%);
+        transition:
+            opacity 0.12s,
+            visibility 0.12s;
+    }
+
+    .row:hover .delete-action,
+    .delete-action:focus-within {
+        opacity: 1;
+        visibility: visible;
     }
 
     .text {

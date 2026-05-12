@@ -40,6 +40,10 @@ export function updateObject(update: ObjectUpdate): Promise<ObjectRecord> {
     return invoke<ObjectRecord>("update_object", { update });
 }
 
+export function deleteObject(id: string): Promise<void> {
+    return invoke<void>("delete_object", { id });
+}
+
 export function saveObjectContent(
     id: string,
     contentText: string,

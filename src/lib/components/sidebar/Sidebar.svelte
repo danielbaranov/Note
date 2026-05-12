@@ -1,5 +1,6 @@
 <script lang="ts">
     import Wordmark from "$lib/components/brand/Wordmark.svelte";
+    import ConfirmDeleteDialog from "$lib/components/ui/ConfirmDeleteDialog.svelte";
     import Icon from "$lib/components/ui/Icon.svelte";
     import IconButton from "$lib/components/ui/IconButton.svelte";
     import SidebarSection from "./SidebarSection.svelte";
@@ -14,6 +15,7 @@
         onSelectObject: (id: string) => void;
         onOpenCommand: () => void;
         onCreateObject: () => void;
+        onDeleteObject?: (id: string) => void | Promise<void>;
     };
 
     let {
@@ -22,7 +24,28 @@
         onSelectObject,
         onOpenCommand,
         onCreateObject,
+        onDeleteObject,
     }: Props = $props();
+
+    let pendingDeleteObject = $state<ObjectRecord | null>(null);
+    let deleting = $state(false);
+
+    const pendingDeleteTitle = $derived(
+        pendingDeleteObject ? displayTitleForObject(pendingDeleteObject) : "",
+    );
+
+    async function confirmDelete() {
+        if (!pendingDeleteObject || !onDeleteObject || deleting) return;
+        const target = pendingDeleteObject;
+
+        deleting = true;
+        try {
+            await onDeleteObject(target.id);
+            pendingDeleteObject = null;
+        } finally {
+            deleting = false;
+        }
+    }
 </script>
 
 <div class="sidebar">
@@ -48,6 +71,11 @@
                         kind="note"
                         active={object.id === currentObjectId}
                         onSelect={() => onSelectObject(object.id)}
+                        onDelete={onDeleteObject
+                            ? () => {
+                                  pendingDeleteObject = object;
+                              }
+                            : undefined}
                     />
                 {/each}
             {/if}
@@ -56,6 +84,19 @@
 
     <SidebarUser />
 </div>
+
+{#if onDeleteObject}
+    <ConfirmDeleteDialog
+        open={pendingDeleteObject !== null}
+        onOpenChange={(open) => {
+            if (!open && !deleting) pendingDeleteObject = null;
+        }}
+        title="Delete note?"
+        description={`${pendingDeleteTitle} will be permanently deleted along with its connections. This cannot be undone.`}
+        busy={deleting}
+        onConfirm={confirmDelete}
+    />
+{/if}
 
 <style>
     .sidebar {

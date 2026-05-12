@@ -4,44 +4,89 @@
     import AppShell from "$lib/components/shell/AppShell.svelte";
     import TitleBar from "$lib/components/shell/TitleBar.svelte";
     import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
+    import SidebarConnections from "$lib/components/sidebar/SidebarConnections.svelte";
     import EditorPane from "$lib/components/editor/EditorPane.svelte";
     import EditorEmpty from "$lib/components/editor/EditorEmpty.svelte";
-    import ConnectionsPanel from "$lib/components/connections/ConnectionsPanel.svelte";
     import GraphDialog from "$lib/components/graph/GraphDialog.svelte";
     import CommandDialog from "$lib/components/CommandDialog.svelte";
     import {
+        connectionDirectionOf,
+        createObjectConnection,
+        deleteObjectConnection,
+        listAllConnections,
+        listObjectConnections,
+        otherObjectIdOf,
+        updateObjectConnectionContent,
+        type ObjectConnectionRecord,
+    } from "$lib/connections";
+    import {
         createMarkdownObject,
+        deleteObject,
+        displayTitleForObject,
         loadObject,
         markdownTitleOrDefault,
         saveObjectContent,
         searchObjects,
         type ObjectRecord,
     } from "$lib/objects";
-    import type { Connection } from "$lib/connections";
+
+    type EditorTarget =
+        | { kind: "object"; id: string }
+        | { kind: "connection"; id: string };
 
     let query = $state("");
     let objects = $state<ObjectRecord[]>([]);
     let object = $state<ObjectRecord | null>(null);
+    let objectConnections = $state<ObjectConnectionRecord[]>([]);
+    let graphNodes = $state<ObjectRecord[]>([]);
+    let graphEdges = $state<ObjectConnectionRecord[]>([]);
     let markdownText = $state("");
     let error = $state("");
     let commandOpen = $state(false);
     let graphOpen = $state(false);
     let connectionsOpen = $state(true);
     let loading = $state(false);
+    let editorTarget = $state<EditorTarget | null>(null);
     let searchRequest = 0;
+    let connectionsRequest = 0;
 
-    // Connections aren't persisted yet — empty list keeps the panel honest
-    // about its current state. Wire to the backend when the storage lands.
-    const noteConnections: Connection[] = [];
+    const selectedConnection = $derived.by(() => {
+        if (editorTarget?.kind !== "connection") return null;
 
-    const graphTitle = $derived(
+        const connectionId = editorTarget.id;
+        return (
+            objectConnections.find(
+                (connection) => connection.id === connectionId,
+            ) ?? null
+        );
+    });
+    const editorKey = $derived(
+        editorTarget ? `${editorTarget.kind}:${editorTarget.id}` : "",
+    );
+    const editorTitle = $derived(
+        selectedConnection
+            ? connectionEditorTitle(selectedConnection)
+            : object
+              ? markdownTitleOrDefault(markdownText)
+              : "Untitled",
+    );
+    const editorFolder = $derived(
+        editorTarget?.kind === "connection" ? "Connections" : "Notes",
+    );
+    const editorUpdatedAtMs = $derived(
+        selectedConnection ? selectedConnection.updatedAtMs : object?.updatedAtMs,
+    );
+    const currentObjectTitle = $derived(
         object
-            ? markdownTitleOrDefault(markdownText) || "Untitled"
+            ? editorTarget?.kind === "object"
+                ? markdownTitleOrDefault(markdownText)
+                : displayTitleForObject(object)
             : "Note graph",
     );
-    const titleBarTitle = $derived(
-        object ? markdownTitleOrDefault(markdownText) : "Note",
+    const graphTitle = $derived(
+        object ? currentObjectTitle || "Untitled" : "Note graph",
     );
+    const titleBarTitle = $derived(editorTarget ? editorTitle : "Note");
 
     onMount(() => {
         void search();
@@ -74,6 +119,9 @@
         try {
             const created = await createMarkdownObject(initialContent);
             object = created;
+            objectConnections = [];
+            editorTarget = { kind: "object", id: created.id };
+            connectionsRequest += 1;
             markdownText = initialContent;
             closeCommand();
             await search("");
@@ -88,8 +136,10 @@
         try {
             const loaded = await loadObject(id);
             object = loaded;
+            editorTarget = { kind: "object", id: loaded.id };
             markdownText = loaded.contentText;
             closeCommand();
+            await loadConnections(loaded.id);
             await search("");
         } catch (caught) {
             error = String(caught);
@@ -97,13 +147,121 @@
     }
 
     async function save() {
-        if (!object) return;
+        if (!editorTarget) return;
 
         error = "";
 
         try {
-            object = await saveObjectContent(object.id, markdownText);
+            if (editorTarget.kind === "connection") {
+                const updated = await updateObjectConnectionContent(
+                    editorTarget.id,
+                    markdownText,
+                );
+                objectConnections = objectConnections.map((connection) =>
+                    connection.id === updated.id ? updated : connection,
+                );
+                graphEdges = graphEdges.map((connection) =>
+                    connection.id === updated.id ? updated : connection,
+                );
+                return;
+            }
+
+            const updated = await saveObjectContent(editorTarget.id, markdownText);
+            if (object?.id === updated.id) {
+                object = updated;
+            }
             await search(query);
+        } catch (caught) {
+            error = String(caught);
+        }
+    }
+
+    async function loadConnections(objectId: string) {
+        const request = ++connectionsRequest;
+
+        try {
+            const connections = await listObjectConnections(objectId);
+            if (request === connectionsRequest && object?.id === objectId) {
+                objectConnections = connections;
+            }
+        } catch (caught) {
+            if (request === connectionsRequest) {
+                error = String(caught);
+            }
+        }
+    }
+
+    async function withError<T>(work: () => Promise<T>): Promise<T> {
+        error = "";
+        try {
+            return await work();
+        } catch (caught) {
+            error = String(caught);
+            throw caught;
+        }
+    }
+
+    function createConnection(targetObjectId: string) {
+        if (!object) return Promise.resolve();
+        const source = object;
+
+        return withError(async () => {
+            const created = await createObjectConnection(
+                source.id,
+                targetObjectId,
+                "",
+            );
+            objectConnections = [created, ...objectConnections];
+            editConnection(created);
+        });
+    }
+
+    function editConnection(connection: ObjectConnectionRecord) {
+        editorTarget = { kind: "connection", id: connection.id };
+        markdownText = connection.contentText;
+    }
+
+    function deleteConnection(id: string) {
+        return withError(async () => {
+            await deleteObjectConnection(id);
+            objectConnections = objectConnections.filter(
+                (connection) => connection.id !== id,
+            );
+            graphEdges = graphEdges.filter((connection) => connection.id !== id);
+
+            if (editorTarget?.kind === "connection" && editorTarget.id === id) {
+                editorTarget = object ? { kind: "object", id: object.id } : null;
+                markdownText = object?.contentText ?? "";
+            }
+        });
+    }
+
+    async function deleteObjectById(id: string) {
+        await withError(() => deleteObject(id));
+
+        if (object?.id === id) {
+            object = null;
+            editorTarget = null;
+            markdownText = "";
+            objectConnections = [];
+            connectionsRequest += 1;
+        }
+
+        await search(query);
+    }
+
+    async function openGraph() {
+        error = "";
+        graphOpen = true;
+
+        try {
+            const [nextNodes, nextEdges] = await Promise.all([
+                searchObjects(""),
+                listAllConnections(),
+            ]);
+
+            graphNodes = nextNodes;
+            graphEdges = nextEdges;
         } catch (caught) {
             error = String(caught);
         }
@@ -137,6 +295,24 @@
             openCommand();
         }
     }
+
+    function connectionEditorTitle(connection: ObjectConnectionRecord): string {
+        const currentObject = object;
+        if (!currentObject) return "Connection";
+
+        const otherObject = objects.find(
+            (candidate) =>
+                candidate.id === otherObjectIdOf(connection, currentObject.id),
+        );
+        const otherTitle = otherObject
+            ? displayTitleForObject(otherObject)
+            : "Unknown object";
+        const direction = connectionDirectionOf(connection, currentObject.id);
+
+        return direction === "incoming"
+            ? `Connection from ${otherTitle}`
+            : `Connection to ${otherTitle}`;
+    }
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -147,7 +323,7 @@
             title={titleBarTitle}
             {connectionsOpen}
             onOpenCommand={openCommand}
-            onOpenGraph={() => (graphOpen = true)}
+            onOpenGraph={openGraph}
             onToggleConnections={() => (connectionsOpen = !connectionsOpen)}
         />
     {/snippet}
@@ -159,13 +335,17 @@
             onSelectObject={open}
             onOpenCommand={openCommand}
             onCreateObject={() => create("")}
+            onDeleteObject={deleteObjectById}
         />
     {/snippet}
 
     {#snippet editor()}
-        {#if object}
+        {#if object && editorTarget}
             <EditorPane
-                {object}
+                {editorKey}
+                title={editorTitle}
+                folder={editorFolder}
+                updatedAtMs={editorUpdatedAtMs}
                 {markdownText}
                 onChange={(value) => (markdownText = value)}
                 onSave={save}
@@ -177,9 +357,16 @@
     {/snippet}
 
     {#snippet connections()}
-        {#if object}
-            <ConnectionsPanel connections={noteConnections} />
-        {/if}
+        <SidebarConnections
+            {objects}
+            connections={objectConnections}
+            currentObjectId={object?.id ?? null}
+            onOpenObject={open}
+            onCreateConnection={createConnection}
+            selectedConnectionId={selectedConnection?.id ?? null}
+            onEditConnection={editConnection}
+            onDeleteConnection={deleteConnection}
+        />
     {/snippet}
 </AppShell>
 
@@ -194,7 +381,17 @@
     onQueryChange={search}
 />
 
-<GraphDialog bind:open={graphOpen} title={graphTitle} />
+<GraphDialog
+    bind:open={graphOpen}
+    title={graphTitle}
+    nodes={graphNodes}
+    edges={graphEdges}
+    currentObjectId={object?.id ?? null}
+    onSelectNode={(id) => {
+        graphOpen = false;
+        void open(id);
+    }}
+/>
 
 {#if error}
     <p class="error" role="alert">{error}</p>

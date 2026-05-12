@@ -10,6 +10,7 @@ use lancedb::query::{ExecutableQuery, QueryBase};
 use serde::{Deserialize, Deserializer, Serialize};
 
 const OBJECTS_TABLE: &str = "objects";
+const CONNECTIONS_TABLE: &str = "connections";
 
 const MARKDOWN_NOTE_OBJECT_TYPE: &str = "markdown_note";
 
@@ -40,6 +41,17 @@ pub struct ObjectUpdate {
     updated_at_ms: Option<i64>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectConnectionRecord {
+    id: String,
+    source_object_id: String,
+    target_object_id: String,
+    content_text: String,
+    created_at_ms: i64,
+    updated_at_ms: i64,
+}
+
 pub async fn connect() -> lancedb::Result<Connection> {
     let db = lancedb::connect("../../data")
         .read_consistency_interval(Duration::from_secs(0))
@@ -47,6 +59,7 @@ pub async fn connect() -> lancedb::Result<Connection> {
         .await?;
 
     ensure_objects_table(&db).await?;
+    ensure_connections_table(&db).await?;
     Ok(db)
 }
 
@@ -228,6 +241,239 @@ pub async fn save_object_content(
     .map(|_| ())
 }
 
+#[tauri::command]
+pub async fn delete_object(db: tauri::State<'_, Connection>, id: String) -> Result<(), String> {
+    if id.trim().is_empty() {
+        return Err("Object id is required".to_string());
+    }
+
+    let escaped_id = sql_escape(&id);
+    let connection_filter =
+        format!("source_object_id = '{escaped_id}' OR target_object_id = '{escaped_id}'");
+
+    let connections_table = db
+        .open_table(CONNECTIONS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    connections_table
+        .delete(&connection_filter)
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let objects_table = db
+        .open_table(OBJECTS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let result = objects_table
+        .delete(&format!("id = '{escaped_id}'"))
+        .await
+        .map_err(|err| err.to_string())?;
+
+    if result.num_deleted_rows == 0 {
+        return Err(format!("Object {id} not found"));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_all_connections(
+    db: tauri::State<'_, Connection>,
+) -> Result<Vec<ObjectConnectionRecord>, String> {
+    let table = db
+        .open_table(CONNECTIONS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let batches: Vec<RecordBatch> = table
+        .query()
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?
+        .try_collect()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let mut connections = Vec::new();
+    for batch in batches {
+        connections.extend(connections_from_batch(&batch)?);
+    }
+
+    connections.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+    Ok(connections)
+}
+
+#[tauri::command]
+pub async fn list_object_connections(
+    db: tauri::State<'_, Connection>,
+    object_id: String,
+) -> Result<Vec<ObjectConnectionRecord>, String> {
+    if object_id.trim().is_empty() {
+        return Err("Object id is required".to_string());
+    }
+
+    let table = db
+        .open_table(CONNECTIONS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let escaped_id = sql_escape(&object_id);
+    let batches: Vec<RecordBatch> = table
+        .query()
+        .only_if(format!(
+            "source_object_id = '{escaped_id}' OR target_object_id = '{escaped_id}'"
+        ))
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?
+        .try_collect()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let mut connections = Vec::new();
+    for batch in batches {
+        connections.extend(connections_from_batch(&batch)?);
+    }
+
+    connections.sort_by(|a, b| b.updated_at_ms.cmp(&a.updated_at_ms));
+    Ok(connections)
+}
+
+#[tauri::command]
+pub async fn create_object_connection(
+    db: tauri::State<'_, Connection>,
+    source_object_id: String,
+    target_object_id: String,
+    content_text: String,
+) -> Result<ObjectConnectionRecord, String> {
+    if source_object_id.trim().is_empty() || target_object_id.trim().is_empty() {
+        return Err("Source and target object ids are required".to_string());
+    }
+
+    if source_object_id == target_object_id {
+        return Err("A connection needs two different objects".to_string());
+    }
+
+    load_object_by_id(db.inner(), &source_object_id).await?;
+    load_object_by_id(db.inner(), &target_object_id).await?;
+
+    let now_ms = now_millis()?;
+    let connection = ObjectConnectionRecord {
+        id: now_nanos()?.to_string(),
+        source_object_id,
+        target_object_id,
+        content_text,
+        created_at_ms: now_ms,
+        updated_at_ms: now_ms,
+    };
+
+    let table = db
+        .open_table(CONNECTIONS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let schema = connection_schema();
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(StringArray::from(vec![connection.id.clone()])),
+            Arc::new(StringArray::from(vec![connection.source_object_id.clone()])),
+            Arc::new(StringArray::from(vec![connection.target_object_id.clone()])),
+            Arc::new(StringArray::from(vec![connection.content_text.clone()])),
+            Arc::new(Int64Array::from(vec![connection.created_at_ms])),
+            Arc::new(Int64Array::from(vec![connection.updated_at_ms])),
+        ],
+    )
+    .map_err(|err| err.to_string())?;
+
+    table
+        .add(batch)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    Ok(connection)
+}
+
+#[tauri::command]
+pub async fn update_object_connection_content(
+    db: tauri::State<'_, Connection>,
+    id: String,
+    content_text: String,
+) -> Result<ObjectConnectionRecord, String> {
+    if id.trim().is_empty() {
+        return Err("Connection id is required".to_string());
+    }
+
+    let existing = load_connection_by_id(db.inner(), &id).await?;
+    let now_ms = now_millis()?;
+    let connection = ObjectConnectionRecord {
+        id: existing.id,
+        source_object_id: existing.source_object_id,
+        target_object_id: existing.target_object_id,
+        content_text,
+        created_at_ms: existing.created_at_ms,
+        updated_at_ms: now_ms,
+    };
+
+    let table = db
+        .open_table(CONNECTIONS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let escaped_id = sql_escape(&connection.id);
+    let result = table
+        .update()
+        .only_if(format!("id = '{escaped_id}'"))
+        .column("content_text", sql_string_literal(&connection.content_text))
+        .column("updated_at_ms", connection.updated_at_ms.to_string())
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    if result.rows_updated == 0 {
+        return Err(format!("Connection {} not found", connection.id));
+    }
+
+    Ok(connection)
+}
+
+#[tauri::command]
+pub async fn delete_object_connection(
+    db: tauri::State<'_, Connection>,
+    id: String,
+) -> Result<(), String> {
+    if id.trim().is_empty() {
+        return Err("Connection id is required".to_string());
+    }
+
+    let table = db
+        .open_table(CONNECTIONS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let escaped_id = sql_escape(&id);
+    let result = table
+        .delete(&format!("id = '{escaped_id}'"))
+        .await
+        .map_err(|err| err.to_string())?;
+
+    if result.num_deleted_rows == 0 {
+        return Err(format!("Connection {id} not found"));
+    }
+
+    Ok(())
+}
+
 async fn load_object_by_id(db: &Connection, id: &str) -> Result<ObjectRecord, String> {
     let table = db
         .open_table(OBJECTS_TABLE)
@@ -256,6 +502,37 @@ async fn load_object_by_id(db: &Connection, id: &str) -> Result<ObjectRecord, St
     Err(format!("Object {id} not found"))
 }
 
+async fn load_connection_by_id(
+    db: &Connection,
+    id: &str,
+) -> Result<ObjectConnectionRecord, String> {
+    let table = db
+        .open_table(CONNECTIONS_TABLE)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    let escaped = sql_escape(id);
+    let batches: Vec<RecordBatch> = table
+        .query()
+        .only_if(format!("id = '{escaped}'"))
+        .limit(1)
+        .execute()
+        .await
+        .map_err(|err| err.to_string())?
+        .try_collect()
+        .await
+        .map_err(|err| err.to_string())?;
+
+    for batch in batches {
+        if let Some(connection) = connections_from_batch(&batch)?.pop() {
+            return Ok(connection);
+        }
+    }
+
+    Err(format!("Connection {id} not found"))
+}
+
 async fn ensure_objects_table(db: &Connection) -> lancedb::Result<()> {
     let exists = db
         .table_names()
@@ -273,6 +550,23 @@ async fn ensure_objects_table(db: &Connection) -> lancedb::Result<()> {
     Ok(())
 }
 
+async fn ensure_connections_table(db: &Connection) -> lancedb::Result<()> {
+    let exists = db
+        .table_names()
+        .execute()
+        .await?
+        .iter()
+        .any(|n| n == CONNECTIONS_TABLE);
+
+    if !exists {
+        db.create_empty_table(CONNECTIONS_TABLE, connection_schema())
+            .execute()
+            .await?;
+    }
+
+    Ok(())
+}
+
 fn object_schema() -> Arc<Schema> {
     Arc::new(Schema::new(vec![
         Field::new("id", DataType::Utf8, false),
@@ -281,6 +575,17 @@ fn object_schema() -> Arc<Schema> {
         Field::new("content_text", DataType::Utf8, false),
         Field::new("metadata_json", DataType::Utf8, false),
         Field::new("source_uri", DataType::Utf8, true),
+        Field::new("created_at_ms", DataType::Int64, false),
+        Field::new("updated_at_ms", DataType::Int64, false),
+    ]))
+}
+
+fn connection_schema() -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Utf8, false),
+        Field::new("source_object_id", DataType::Utf8, false),
+        Field::new("target_object_id", DataType::Utf8, false),
+        Field::new("content_text", DataType::Utf8, false),
         Field::new("created_at_ms", DataType::Int64, false),
         Field::new("updated_at_ms", DataType::Int64, false),
     ]))
@@ -310,6 +615,28 @@ fn objects_from_batch(batch: &RecordBatch) -> Result<Vec<ObjectRecord>, String> 
         });
     }
     Ok(objects)
+}
+
+fn connections_from_batch(batch: &RecordBatch) -> Result<Vec<ObjectConnectionRecord>, String> {
+    let ids = column_as_strings(batch, "id")?;
+    let source_object_ids = column_as_strings(batch, "source_object_id")?;
+    let target_object_ids = column_as_strings(batch, "target_object_id")?;
+    let content_texts = column_as_strings(batch, "content_text")?;
+    let created_at_values = column_as_int64(batch, "created_at_ms")?;
+    let updated_at_values = column_as_int64(batch, "updated_at_ms")?;
+
+    let mut connections = Vec::with_capacity(batch.num_rows());
+    for i in 0..batch.num_rows() {
+        connections.push(ObjectConnectionRecord {
+            id: ids.value(i).to_string(),
+            source_object_id: source_object_ids.value(i).to_string(),
+            target_object_id: target_object_ids.value(i).to_string(),
+            content_text: content_texts.value(i).to_string(),
+            created_at_ms: created_at_values.value(i),
+            updated_at_ms: updated_at_values.value(i),
+        });
+    }
+    Ok(connections)
 }
 
 fn column_as_strings<'a>(batch: &'a RecordBatch, name: &str) -> Result<&'a StringArray, String> {

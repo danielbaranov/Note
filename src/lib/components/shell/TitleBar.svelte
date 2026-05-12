@@ -48,13 +48,15 @@
         <IconButton title="Graph view" onclick={() => onOpenGraph?.()}>
             <Icon name="graph" />
         </IconButton>
-        <IconButton
-            title={connectionsOpen ? "Hide connections" : "Show connections"}
-            pressed={connectionsOpen}
-            onclick={() => onToggleConnections?.()}
-        >
-            <Icon name="link" />
-        </IconButton>
+        {#if onToggleConnections}
+            <IconButton
+                title={connectionsOpen ? "Hide connections" : "Show connections"}
+                pressed={connectionsOpen}
+                onclick={() => onToggleConnections()}
+            >
+                <Icon name="link" />
+            </IconButton>
+        {/if}
     </div>
 </header>
 

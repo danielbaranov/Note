@@ -58,7 +58,13 @@ pub fn run() {
             database::create_markdown_object,
             database::load_object,
             database::update_object,
-            database::save_object_content
+            database::save_object_content,
+            database::delete_object,
+            database::list_all_connections,
+            database::list_object_connections,
+            database::create_object_connection,
+            database::update_object_connection_content,
+            database::delete_object_connection
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

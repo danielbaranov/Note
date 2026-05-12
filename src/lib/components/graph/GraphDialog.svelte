@@ -1,14 +1,28 @@
 <script lang="ts">
     import { Dialog } from "bits-ui";
 
+    import type { ObjectConnectionRecord } from "$lib/connections";
+    import type { ObjectRecord } from "$lib/objects";
+    import Graph from "$lib/components/graph/Graph.svelte";
     import Icon from "$lib/components/ui/Icon.svelte";
 
     type Props = {
         open: boolean;
         title: string;
+        nodes: ObjectRecord[];
+        edges: ObjectConnectionRecord[];
+        currentObjectId: string | null;
+        onSelectNode: (id: string) => void;
     };
 
-    let { open = $bindable(false), title }: Props = $props();
+    let {
+        open = $bindable(false),
+        title,
+        nodes,
+        edges,
+        currentObjectId,
+        onSelectNode,
+    }: Props = $props();
 </script>
 
 <Dialog.Root bind:open>
@@ -21,23 +35,13 @@
                     <div>
                         <Dialog.Title class="title">{title}</Dialog.Title>
                         <Dialog.Description class="subtitle"
-                            >Local view</Dialog.Description
+                            >{nodes.length} objects · {edges.length}
+                            connections</Dialog.Description
                         >
                     </div>
                 </div>
 
                 <div class="head-spacer"></div>
-
-                <div class="scope-toggle" role="tablist" aria-label="Scope">
-                    {#each ["Local", "Global", "Tags"] as scope, i (scope)}
-                        <span
-                            class="scope-option"
-                            class:active={i === 0}
-                            role="tab"
-                            aria-selected={i === 0}>{scope}</span
-                        >
-                    {/each}
-                </div>
 
                 <Dialog.Close class="close-btn" aria-label="Close">
                     <Icon name="close" />
@@ -45,14 +49,7 @@
             </header>
 
             <div class="canvas">
-                <div class="placeholder">
-                    <Icon name="graph" size={36} />
-                    <h3>Graph view coming soon</h3>
-                    <p>
-                        A spatial map of this note's connections will live
-                        here.
-                    </p>
-                </div>
+                <Graph {nodes} {edges} {currentObjectId} {onSelectNode} />
             </div>
         </Dialog.Content>
     </Dialog.Portal>
@@ -73,8 +70,8 @@
         left: 50%;
         z-index: 31;
         transform: translate(-50%, -50%);
-        width: min(920px, calc(100vw - 64px));
-        height: min(680px, calc(100vh - 96px));
+        width: min(1200px, calc(100vw - 64px));
+        height: min(840px, calc(100vh - 96px));
         background: var(--bg-elev);
         border-radius: var(--r-xl);
         box-shadow: var(--shadow-lg);
@@ -126,29 +123,6 @@
         flex: 1;
     }
 
-    .scope-toggle {
-        display: flex;
-        background: var(--bg-tint);
-        border-radius: 7px;
-        padding: 2px;
-        gap: 2px;
-    }
-
-    .scope-option {
-        padding: 4px 10px;
-        font-size: 11.5px;
-        font-weight: 500;
-        color: var(--fg-3);
-        border-radius: 5px;
-        cursor: pointer;
-    }
-
-    .scope-option.active {
-        background: var(--bg-elev);
-        color: var(--fg-1);
-        box-shadow: var(--shadow-sm);
-    }
-
     :global(.close-btn) {
         width: 28px;
         height: 28px;
@@ -173,6 +147,7 @@
 
     .canvas {
         flex: 1;
+        min-height: 0;
         position: relative;
         background: radial-gradient(
             ellipse at center,
@@ -180,31 +155,5 @@
             #f4f3f0 100%
         );
         display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .placeholder {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 8px;
-        color: var(--fg-3);
-        text-align: center;
-        padding: 40px;
-    }
-
-    .placeholder h3 {
-        margin: 6px 0 0;
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--fg-2);
-        letter-spacing: -0.01em;
-    }
-
-    .placeholder p {
-        margin: 0;
-        max-width: 320px;
-        font-size: 13px;
     }
 </style>
